@@ -79,3 +79,17 @@ def enforce_user_hourly_limit(user_id: UUID, action: str, limit: int) -> None:
         ttl_seconds=3600,
         detail="Too many requests — please slow down and try again shortly.",
     )
+
+
+def enforce_chat_send_limit(user_id: UUID) -> None:
+    """Chat message rate limit per user per minute (fail-open if Upstash unreachable)."""
+    from app.core.config import settings
+
+    window = int(time.time() // 60)
+    key = f"rl:chat_send:min:{user_id}:{window}"
+    _check(
+        key,
+        limit=settings.chat_rate_limit_per_minute,
+        ttl_seconds=60,
+        detail="You're sending messages too quickly. Please slow down.",
+    )

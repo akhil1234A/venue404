@@ -47,7 +47,8 @@ export { NotFoundState } from './components/feedback/NotFoundState'
 
 // Chat
 export { ChatWindow } from './components/ChatWindow'
-export type { ChatMessage } from './components/ChatWindow'
+export { useChat } from './hooks/useChat'
+export type { ChatMessage, UseChatReturn, TypingUser } from './hooks/useChat'
 
 // Empty state
 export { EmptyState } from './components/empty-state/EmptyState'

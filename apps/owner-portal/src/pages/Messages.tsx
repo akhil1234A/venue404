@@ -116,10 +116,16 @@ export default function Messages() {
     }
   }, [conversations, activeBookingId, bookingFallbackQuery.data])
 
-  const { messages, isLoading: isChatLoading, isConnected, sendMessage, sendError } = useChat(
-    activeBookingId || '',
-    currentUserId,
-  )
+  const {
+    messages,
+    isLoading: isChatLoading,
+    isConnected,
+    sendMessage,
+    retryMessage,
+    sendError,
+    typingUsers,
+    sendTyping,
+  } = useChat(activeBookingId || '', currentUserId)
 
   const unreadTotal = conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0)
 
@@ -326,12 +332,6 @@ export default function Messages() {
                 </button>
               </div>
 
-              {sendError && (
-                <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
-                  {sendError}
-                </div>
-              )}
-
               <div className="min-h-0 flex-1">
                 <ChatWindow
                   messages={messages.map((msg) => ({
@@ -343,6 +343,13 @@ export default function Messages() {
                   }))}
                   currentUserId={currentUserId}
                   onSendMessage={sendMessage}
+                  onRetry={retryMessage}
+                  onTyping={sendTyping}
+                  typingUsers={typingUsers.map((u) => {
+                    const name = typeof u === 'string' ? u : u.userName
+                    return name || activeConversation.other_party_name || 'Guest'
+                  })}
+                  sendError={sendError}
                   isLoading={isChatLoading || bookingFallbackQuery.isLoading}
                   isConnected={isConnected}
                   footerHint="Messages are tied to this booking"

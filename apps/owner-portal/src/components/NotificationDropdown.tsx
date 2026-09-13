@@ -117,7 +117,9 @@ export function NotificationDropdown() {
       notificationEndpoints(client)
         .list()
         .then((res) => res.data),
-    staleTime: 30 * 1000,
+    staleTime: 5 * 1000,
+    refetchInterval: 10 * 1000,
+    refetchOnWindowFocus: true,
   })
 
   const markReadMutation = useMutation({

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -32,5 +32,11 @@ class ChatMessage(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        # Indexes defined in migration for booking_id, sender_id
+        Index(
+            "idx_chat_messages_unread",
+            "booking_id",
+            "sender_id",
+            postgresql_where=text("read_at IS NULL"),
+        ),
+        Index("idx_chat_messages_booking_created", "booking_id", "created_at"),
     )

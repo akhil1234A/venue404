@@ -14,13 +14,21 @@ export type ChatMessage = {
   status?: 'sending' | 'sent' | 'failed'
 }
 
+export type TypingUser = {
+  userId?: string
+  userName?: string
+}
+
 type ChatWindowProps = {
   messages: ChatMessage[]
   currentUserId: string
   onSendMessage: (message: string) => void
   isLoading?: boolean
   isConnected?: boolean
-  typingUsers?: string[]
+  typingUsers?: Array<TypingUser | string>
+  sendError?: string | null
+  onTyping?: () => void
+  onRetry?: (messageId: string) => void
   /** Optional footer note under the input (e.g. booking context) */
   footerHint?: string
   className?: string
@@ -37,6 +45,9 @@ export function ChatWindow({
   isLoading = false,
   isConnected = true,
   typingUsers = [],
+  sendError = null,
+  onTyping,
+  onRetry,
   footerHint,
   className,
   disabled = false,
@@ -55,7 +66,11 @@ export function ChatWindow({
         ) : messages.length === 0 ? (
           <EmptyChatState />
         ) : (
-          <MessagesList messages={messages} currentUserId={currentUserId} />
+          <MessagesList
+            messages={messages}
+            currentUserId={currentUserId}
+            onRetry={onRetry}
+          />
         )}
       </div>
 
@@ -65,10 +80,17 @@ export function ChatWindow({
         </div>
       )}
 
+      {sendError && (
+        <div className="border-t border-red-200/80 bg-red-50 px-4 py-2 text-xs font-medium text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+          {sendError}
+        </div>
+      )}
+
       <ConnectionStatus isConnected={isConnected} />
 
       <MessageInput
         onSend={onSendMessage}
+        onTyping={onTyping}
         disabled={disabled || !isConnected}
         disabledReason={
           disabled
@@ -151,9 +173,19 @@ function ConnectionStatus({ isConnected }: { isConnected: boolean }) {
   )
 }
 
-function TypingIndicator({ users }: { users: string[] }) {
-  const text =
-    users.length === 1 ? 'Someone is typing' : `${users.length} people are typing`
+function TypingIndicator({ users }: { users: Array<TypingUser | string> }) {
+  const names = users
+    .map((u) => (typeof u === 'string' ? u : u.userName || 'Someone'))
+    .filter(Boolean)
+
+  let text = 'Someone is typing…'
+  if (names.length === 1) {
+    text = `${names[0]} is typing…`
+  } else if (names.length === 2) {
+    text = `${names[0]} and ${names[1]} are typing…`
+  } else if (names.length > 2) {
+    text = `${names[0]}, ${names[1]} and ${names.length - 2} others are typing…`
+  }
 
   return (
     <div className="flex items-center gap-2" aria-live="polite">
@@ -252,9 +284,11 @@ function buildListItems(messages: ChatMessage[], currentUserId: string): ListIte
 function MessagesList({
   messages,
   currentUserId,
+  onRetry,
 }: {
   messages: ChatMessage[]
   currentUserId: string
+  onRetry?: (messageId: string) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -329,6 +363,7 @@ function MessagesList({
                 messages={item.messages}
                 isOwn={item.isOwn}
                 senderName={item.senderName}
+                onRetry={onRetry}
               />
             )
           })}
@@ -363,10 +398,12 @@ function MessageGroup({
   messages,
   isOwn,
   senderName,
+  onRetry,
 }: {
   messages: ChatMessage[]
   isOwn: boolean
   senderName?: string
+  onRetry?: (messageId: string) => void
 }) {
   return (
     <div className={cn('flex items-end gap-2', isOwn ? 'justify-end' : 'justify-start')}>
@@ -389,6 +426,7 @@ function MessageGroup({
         {messages.map((msg, idx) => (
           <MessageBubble
             key={msg.id}
+            messageId={msg.id}
             message={msg.message}
             isOwn={isOwn}
             createdAt={msg.created_at}
@@ -397,6 +435,7 @@ function MessageGroup({
             status={msg.status}
             isFirst={idx === 0}
             isLast={idx === messages.length - 1}
+            onRetry={onRetry}
           />
         ))}
       </div>
@@ -405,6 +444,7 @@ function MessageGroup({
 }
 
 function MessageBubble({
+  messageId,
   message,
   isOwn,
   createdAt,
@@ -413,7 +453,9 @@ function MessageBubble({
   status,
   isFirst,
   isLast,
+  onRetry,
 }: {
+  messageId: string
   message: string
   isOwn: boolean
   createdAt: string
@@ -422,6 +464,7 @@ function MessageBubble({
   status?: ChatMessage['status']
   isFirst: boolean
   isLast: boolean
+  onRetry?: (messageId: string) => void
 }) {
   const time = format(new Date(createdAt), 'h:mm a')
   const isFailed = status === 'failed'
@@ -461,6 +504,17 @@ function MessageBubble({
           </span>
         )}
       </p>
+      {isFailed && (
+        <div className="mt-1 flex justify-end">
+          <button
+            type="button"
+            onClick={() => onRetry?.(messageId)}
+            className="text-[10px] font-medium text-red-200 hover:text-white underline cursor-pointer"
+          >
+            Tap to retry
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -507,11 +561,13 @@ function StatusTicks({
 
 function MessageInput({
   onSend,
+  onTyping,
   disabled,
   disabledReason,
   footerHint,
 }: {
   onSend: (message: string) => void
+  onTyping?: () => void
   disabled?: boolean
   disabledReason?: string
   footerHint?: string
@@ -560,7 +616,10 @@ function MessageInput({
           <textarea
             ref={textareaRef}
             value={value}
-            onChange={(e) => setValue(e.target.value.slice(0, MAX_LENGTH))}
+            onChange={(e) => {
+              setValue(e.target.value.slice(0, MAX_LENGTH))
+              onTyping?.()
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()

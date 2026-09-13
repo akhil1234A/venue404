@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import case, desc, func, or_, select
+from sqlalchemy import case, desc, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.chat.models import ChatMessage
@@ -65,14 +65,19 @@ def mark_messages_read(
     booking_id: UUID,
     user_id: UUID,
 ) -> int:
-    """Mark all messages as read for a user in a booking. Returns count."""
-    unread = get_unread_messages(db, booking_id, user_id)
-
-    for msg in unread:
-        msg.read_at = db.execute(select(func.now())).scalar()
-
+    """Mark all messages as read for a user in a booking via a single bulk update. Returns count."""
+    stmt = (
+        update(ChatMessage)
+        .where(
+            ChatMessage.booking_id == booking_id,
+            ChatMessage.sender_id != user_id,
+            ChatMessage.read_at.is_(None),
+        )
+        .values(read_at=func.now())
+    )
+    result = db.execute(stmt)
     db.flush()
-    return len(unread)
+    return result.rowcount
 
 
 def get_booking_participants(

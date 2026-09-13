@@ -87,6 +87,10 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"  # DEBUG / INFO / WARNING / ERROR
 
+    # Chat
+    chat_max_message_length: int = 2000
+    chat_rate_limit_per_minute: int = 30
+
     class Config:
         env_file = ".env"
         # Business constants (token_advance_pct, platform_fee_pct,
