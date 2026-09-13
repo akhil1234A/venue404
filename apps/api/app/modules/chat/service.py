@@ -3,7 +3,9 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.rate_limit import enforce_chat_send_limit
 from app.modules.chat.repository import (
     create_message,
     get_booking_participants,
@@ -13,8 +15,56 @@ from app.modules.chat.repository import (
 )
 from app.modules.chat.schemas import ChatMessageOut, ConversationOut, MarkReadOut
 
-# Max message length config - will be read from settings when available
-MAX_MESSAGE_LENGTH = 2000
+
+def _validate_and_create_message(
+    db: Session,
+    booking_id: UUID,
+    sender_id: UUID,
+    message: str,
+):
+    """Shared validation and message creation for both REST and WS send paths.
+
+    Returns (chat_message, customer_id, owner_id, venue_name).
+    """
+    from sqlalchemy import select
+
+    from app.modules.booking.helpers import TERMINAL_STATUSES
+    from app.modules.booking.models import Booking
+    from app.modules.venue.models import Venue
+
+    enforce_chat_send_limit(sender_id)
+
+    # Lock the booking row to prevent race conditions with cancellations
+    booking = (
+        db.execute(select(Booking).where(Booking.id == booking_id).with_for_update())
+        .scalars()
+        .first()
+    )
+
+    if not booking:
+        raise NotFoundError("Booking not found")
+
+    venue = db.execute(select(Venue).where(Venue.id == booking.venue_id)).scalars().first()
+    customer_id = booking.user_id
+    owner_id = venue.owner_id if venue else None
+
+    if sender_id not in (customer_id, owner_id):
+        raise ForbiddenError("Not authorized to send messages to this chat")
+
+    if booking.status in TERMINAL_STATUSES:
+        raise ForbiddenError("Cannot send messages for a booking in a terminal status")
+
+    cleaned = (message or "").strip()
+    if not cleaned:
+        raise ValueError("Message cannot be empty")
+
+    if len(cleaned) > settings.chat_max_message_length:
+        raise ValueError(f"Message exceeds {settings.chat_max_message_length} characters")
+
+    chat_message = create_message(db, booking_id, sender_id, cleaned)
+    venue_name = venue.name if venue else None
+
+    return chat_message, customer_id, owner_id, venue_name
 
 
 def list_messages(
@@ -68,43 +118,10 @@ def send_message(
     sender_id: UUID,
     message: str,
 ) -> ChatMessageOut:
-    """Send a message to a booking chat. Validates access and creates notification."""
-    from sqlalchemy import select
-
-    from app.modules.booking.helpers import TERMINAL_STATUSES
-    from app.modules.booking.models import Booking
-    from app.modules.venue.models import Venue
-
-    # Lock the booking row to prevent race conditions with cancellations
-    booking = (
-        db.execute(select(Booking).where(Booking.id == booking_id).with_for_update())
-        .scalars()
-        .first()
+    """Send a message to a booking chat. Validates access and creates message."""
+    chat_message, customer_id, owner_id, venue_name = _validate_and_create_message(
+        db, booking_id, sender_id, message
     )
-
-    if not booking:
-        raise NotFoundError("Booking not found")
-
-    venue = db.execute(select(Venue).where(Venue.id == booking.venue_id)).scalars().first()
-    customer_id = booking.user_id
-    owner_id = venue.owner_id if venue else None
-
-    if sender_id not in (customer_id, owner_id):
-        raise ForbiddenError("Not authorized to send messages to this chat")
-
-    if booking.status in TERMINAL_STATUSES:
-        raise ForbiddenError("Cannot send messages for a booking in a terminal status")
-
-    # Normalize + validate message body
-    cleaned = (message or "").strip()
-    if not cleaned:
-        raise ValueError("Message cannot be empty")
-
-    if len(cleaned) > MAX_MESSAGE_LENGTH:
-        raise ValueError(f"Message exceeds {MAX_MESSAGE_LENGTH} characters")
-
-    chat_message = create_message(db, booking_id, sender_id, cleaned)
-
     return _to_output(chat_message)
 
 

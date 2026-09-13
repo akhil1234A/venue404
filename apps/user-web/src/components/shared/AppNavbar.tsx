@@ -145,8 +145,9 @@ function NotificationBell() {
   const { data } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => notificationEndpoints(client).list(),
-    staleTime: 30 * 1000,
-    refetchInterval: 30 * 1000,
+    staleTime: 5 * 1000,
+    refetchInterval: 10 * 1000,
+    refetchOnWindowFocus: true,
   })
   const notifications = data?.data || []
   const unreadCount = notifications.filter((n) => n.read_at == null).length

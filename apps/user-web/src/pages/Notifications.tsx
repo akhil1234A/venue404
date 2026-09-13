@@ -106,7 +106,9 @@ export default function Notifications() {
   } = useQuery({
     queryKey: ['notifications', page],
     queryFn: () => notificationEndpoints(client).list({ page, per_page: 10 }),
-    staleTime: 30 * 1000,
+    staleTime: 5 * 1000,
+    refetchInterval: 10 * 1000,
+    refetchOnWindowFocus: true,
   })
 
   const notifications = data?.data || []

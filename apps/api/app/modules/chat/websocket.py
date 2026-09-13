@@ -1,19 +1,24 @@
+import asyncio
 import json
 import logging
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.core import redis as redis_client
 from app.core.database import with_session
-from app.core.exceptions import ForbiddenError
+from app.core.exceptions import ForbiddenError, RateLimitError
 from app.modules.chat.manager import (
     broadcast_message,
+    broadcast_typing,
     notify_offline_participant,
     register_connection,
     unregister_connection,
 )
 from app.modules.chat.schemas import SendMessageIn
-from app.modules.chat.service import get_venue_name_for_notification
+from app.modules.chat.service import (
+    _validate_and_create_message,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,41 +64,10 @@ def send_message_ws_with_session(
     message: str,
 ) -> dict:
     """Send message via WebSocket with proper session management."""
-    from sqlalchemy import select
-
-    from app.modules.booking.helpers import TERMINAL_STATUSES
-    from app.modules.booking.models import Booking
-    from app.modules.chat.repository import create_message
-    from app.modules.venue.models import Venue
-
     with with_session() as db:
-        # Lock the booking row to prevent race conditions with cancellations
-        booking = (
-            db.execute(select(Booking).where(Booking.id == booking_id).with_for_update())
-            .scalars()
-            .first()
+        chat_message, customer_id, owner_id, venue_name = _validate_and_create_message(
+            db, booking_id, sender_id, message
         )
-
-        if not booking:
-            raise ForbiddenError("Booking not found")
-
-        venue = db.execute(select(Venue).where(Venue.id == booking.venue_id)).scalars().first()
-        customer_id = booking.user_id
-        owner_id = venue.owner_id if venue else None
-
-        if sender_id not in (customer_id, owner_id):
-            raise ForbiddenError("Not authorized to send messages to this chat")
-
-        if booking.status in TERMINAL_STATUSES:
-            raise ForbiddenError("Cannot send messages for a booking in a terminal status")
-
-        cleaned = (message or "").strip()
-        if not cleaned:
-            raise ValueError("Message cannot be empty")
-        if len(cleaned) > 2000:
-            raise ValueError("Message exceeds 2000 characters")
-
-        chat_message = create_message(db, booking_id, sender_id, cleaned)
 
         result = {
             "id": str(chat_message.id),
@@ -106,9 +80,6 @@ def send_message_ws_with_session(
 
         # Determine recipient for notification
         recipient_id = owner_id if sender_id == customer_id else customer_id
-
-        # Get venue name for notification context
-        venue_name = get_venue_name_for_notification(db, booking_id)
 
         # Notify offline recipient if needed (pass session since it may need DB)
         notify_offline_participant(
@@ -170,7 +141,12 @@ async def websocket_endpoint(
 
         # Message loop
         while True:
-            data = await websocket.receive_text()
+            try:
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=90.0)
+            except TimeoutError:
+                logger.info(f"WebSocket timeout for user {user_id} on booking {booking_id}")
+                await websocket.close(code=1000, reason="Idle timeout")
+                break
 
             try:
                 msg = json.loads(data)
@@ -209,19 +185,7 @@ async def websocket_endpoint(
                             }
                         )
                     )
-                except ValueError as e:
-                    error_payload = {"message": str(e)}
-                    if client_msg_id:
-                        error_payload["client_msg_id"] = client_msg_id
-                    await websocket.send_text(
-                        json.dumps(
-                            {
-                                "type": "error",
-                                "payload": error_payload,
-                            }
-                        )
-                    )
-                except ForbiddenError as e:
+                except (ValueError, RateLimitError, ForbiddenError) as e:
                     error_payload = {"message": str(e)}
                     if client_msg_id:
                         error_payload["client_msg_id"] = client_msg_id
@@ -260,7 +224,20 @@ async def websocket_endpoint(
                             }
                         )
                     )
+            elif msg_type == "typing_start":
+                display_name = user_name or (user_email.split("@")[0] if user_email else None)
+                await broadcast_typing(booking_id, user_id, is_typing=True, user_name=display_name)
+            elif msg_type == "typing_stop":
+                display_name = user_name or (user_email.split("@")[0] if user_email else None)
+                await broadcast_typing(booking_id, user_id, is_typing=False, user_name=display_name)
             elif msg_type == "ping":
+                # Refresh Redis presence TTL
+                try:
+                    if redis_client.is_configured():
+                        r = redis_client.get_redis()
+                        r.set(f"chat:online:{booking_id}:{user_id}", "1", ex=120)
+                except Exception:
+                    pass
                 await websocket.send_text(
                     json.dumps(
                         {
