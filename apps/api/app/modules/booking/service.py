@@ -8,6 +8,13 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.events import (
+    BookingAcceptedEvent,
+    BookingDeadlineExtendedEvent,
+    BookingRejectedEvent,
+    BookingRequestedEvent,
+    emit,
+)
 from app.modules.admin import settings_store
 from app.modules.availability.service import validate_booking_request
 
@@ -47,8 +54,6 @@ from app.modules.booking.schemas import (
     ExtendDeadlineIn,
     PaginatedMeta,
 )
-from app.modules.notification import service as notifications
-from app.modules.notification.types import NotificationType
 from app.modules.profile.models import Profile
 from app.modules.venue.models import Venue
 from app.modules.venue.service import _get_active_venue_or_404, get_pricing_quote_for_slot
@@ -179,19 +184,15 @@ def create_booking_request(
                 detail="Failed to initialize payment for instant booking",
             ) from e
     else:
-        notifications.notify(
+        emit(
+            BookingRequestedEvent(
+                booking_id=booking.id,
+                user_id=user_id,
+                owner_id=venue.owner_id,
+                venue_id=venue.id,
+                venue_name=venue.name,
+            ),
             db,
-            venue.owner_id,
-            NotificationType.NEW_REQUEST_OWNER,
-            context={"venue_name": venue.name},
-            booking_id=booking.id,
-        )
-        notifications.notify(
-            db,
-            user_id,
-            NotificationType.REQUEST_RECEIVED,
-            context={"venue_name": venue.name},
-            booking_id=booking.id,
         )
 
     db.refresh(booking)
@@ -473,12 +474,15 @@ def owner_accept_booking(db: Session, booking_id: UUID, owner_id: UUID) -> Booki
     db.flush()
     db.refresh(booking)
 
-    notifications.notify(
+    emit(
+        BookingAcceptedEvent(
+            booking_id=booking.id,
+            user_id=booking.user_id,
+            owner_id=booking.venue.owner_id,
+            venue_id=booking.venue_id,
+            venue_name=booking.venue.name,
+        ),
         db,
-        booking.user_id,
-        NotificationType.REQUEST_ACCEPTED,
-        context={"venue_name": booking.venue.name},
-        booking_id=booking.id,
     )
     return _booking_out(db, booking)
 
@@ -505,12 +509,16 @@ def owner_reject_booking(
     db.flush()
     db.refresh(booking)
 
-    notifications.notify(
+    emit(
+        BookingRejectedEvent(
+            booking_id=booking.id,
+            user_id=booking.user_id,
+            owner_id=booking.venue.owner_id,
+            venue_id=booking.venue_id,
+            venue_name=booking.venue.name,
+            reason=reason,
+        ),
         db,
-        booking.user_id,
-        NotificationType.BOOKING_REJECTED,
-        context={"venue_name": booking.venue.name},
-        booking_id=booking.id,
     )
     return _booking_out(db, booking)
 
@@ -564,12 +572,15 @@ def owner_extend_deadline(
 
     db.flush()
     db.refresh(booking)
-    notifications.notify(
+    emit(
+        BookingDeadlineExtendedEvent(
+            booking_id=booking.id,
+            user_id=booking.user_id,
+            venue_id=booking.venue_id,
+            venue_name=booking.venue.name,
+            new_due_date=body.new_due_date,
+        ),
         db,
-        booking.user_id,
-        NotificationType.BALANCE_DEADLINE_EXTENDED,
-        context={"venue_name": booking.venue.name},
-        booking_id=booking.id,
     )
     return _booking_out(db, booking)
 

@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.events import BookingCancelledEvent, emit
 from app.modules.admin import settings_store
 from app.modules.booking.helpers import (
     TERMINAL_STATUSES,
@@ -29,8 +30,6 @@ from app.modules.booking.schemas import (
     CancellationDisplay,
     CancellationPreviewOut,
 )
-from app.modules.notification import service as notifications
-from app.modules.notification.types import NotificationType
 from app.modules.payment import service as payment_service
 from app.modules.venue.models import VenueCancellationPolicy
 
@@ -212,12 +211,15 @@ def user_cancel_booking(db: Session, booking_id: UUID, user_id: UUID) -> Booking
     db.refresh(booking)
 
     # Notifications (spec: notify owner)
-    notifications.notify(
+    emit(
+        BookingCancelledEvent(
+            booking_id=booking.id,
+            user_id=booking.user_id,
+            recipient_id=booking.venue.owner_id,
+            venue_name=booking.venue.name,
+            cancelled_by=user_id,
+        ),
         db,
-        booking.venue.owner_id,
-        NotificationType.BOOKING_CANCELED,
-        context={"venue_name": booking.venue.name},
-        booking_id=booking.id,
     )
     return _booking_out(db, booking)
 
@@ -247,12 +249,15 @@ def owner_cancel_forfeit(db: Session, booking_id: UUID, owner_id: UUID) -> Booki
     )
     db.flush()
     db.refresh(booking)
-    notifications.notify(
+    emit(
+        BookingCancelledEvent(
+            booking_id=booking.id,
+            user_id=booking.user_id,
+            recipient_id=booking.user_id,
+            venue_name=booking.venue.name,
+            cancelled_by=owner_id,
+        ),
         db,
-        booking.user_id,
-        NotificationType.BOOKING_CANCELED,
-        context={"venue_name": booking.venue.name},
-        booking_id=booking.id,
     )
     return _booking_out(db, booking)
 
@@ -290,12 +295,15 @@ def owner_cancel_goodwill(db: Session, booking_id: UUID, owner_id: UUID) -> Book
     )
     db.flush()
     db.refresh(booking)
-    notifications.notify(
+    emit(
+        BookingCancelledEvent(
+            booking_id=booking.id,
+            user_id=booking.user_id,
+            recipient_id=booking.user_id,
+            venue_name=booking.venue.name,
+            cancelled_by=owner_id,
+        ),
         db,
-        booking.user_id,
-        NotificationType.BOOKING_CANCELED,
-        context={"venue_name": booking.venue.name},
-        booking_id=booking.id,
     )
     return _booking_out(db, booking)
 

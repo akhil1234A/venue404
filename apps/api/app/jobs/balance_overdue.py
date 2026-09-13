@@ -2,6 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from app.core.database import with_session
+from app.events import BalanceOverdueFlaggedEvent, BookingCancelledEvent, emit
 from app.modules.admin import settings_store
 from app.modules.booking.models import (
     Booking,
@@ -9,7 +10,6 @@ from app.modules.booking.models import (
     BookingStatusHistory,
     PaymentStatus,
 )
-from app.modules.notification import service as notifications
 from app.modules.venue.models import Venue
 
 logger = logging.getLogger(__name__)
@@ -46,21 +46,15 @@ def run_flag() -> int:
             b.balance_overdue_at = now
             b.owner_action_deadline = now + timedelta(hours=window)
             venue_name = venue.name if venue else "your venue"
-            notifications.notify(
-                db,
-                b.user_id,
-                "balance_overdue",
-                context={"venue_name": venue_name},
-                booking_id=b.id,
-            )
-            if venue:
-                notifications.notify(
-                    db,
-                    venue.owner_id,
-                    "balance_overdue",
-                    context={"venue_name": venue_name},
+            emit(
+                BalanceOverdueFlaggedEvent(
                     booking_id=b.id,
-                )
+                    user_id=b.user_id,
+                    venue_name=venue_name,
+                    owner_id=venue.owner_id if venue else None,
+                ),
+                db,
+            )
             flagged += 1
         logger.info("balance_overdue_flag: flagged %d booking(s)", flagged)
         return flagged
@@ -107,12 +101,15 @@ def run_autocancel() -> int:
             )
             venue = db.get(Venue, b.venue_id)
             venue_name = venue.name if venue else "your venue"
-            notifications.notify(
+            emit(
+                BookingCancelledEvent(
+                    booking_id=b.id,
+                    user_id=b.user_id,
+                    recipient_id=b.user_id,
+                    venue_name=venue_name,
+                    reason="balance_overdue_autocancel_job",
+                ),
                 db,
-                b.user_id,
-                "booking_canceled",
-                context={"venue_name": venue_name},
-                booking_id=b.id,
             )
             cancelled += 1
         logger.info("balance_overdue_autocancel: cancelled %d booking(s)", cancelled)

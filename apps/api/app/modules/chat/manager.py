@@ -5,7 +5,7 @@ import logging
 from uuid import UUID
 
 from app.core import redis as redis_client
-from app.modules.notification.service import notify
+from app.events import ChatMessageOfflineEvent, emit
 
 logger = logging.getLogger(__name__)
 
@@ -168,16 +168,13 @@ def notify_offline_participant(
         if is_user_connected(booking_id, recipient_id):
             return  # User is online, no notification needed
 
-        context = {
-            "recipient_id": str(recipient_id),
-            **booking_context,
-        }
-        notify(
+        emit(
+            ChatMessageOfflineEvent(
+                booking_id=booking_id,
+                recipient_id=recipient_id,
+                booking_context=booking_context,
+            ),
             db,
-            user_id=recipient_id,
-            type="chat_message",
-            context=context,
-            booking_id=booking_id,
         )
     except Exception as e:
         logger.error(

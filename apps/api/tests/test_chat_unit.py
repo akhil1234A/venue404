@@ -135,7 +135,7 @@ def test_notify_offline_participant_error_handled():
     notify_err = Exception("Notification service down")
     with (
         patch("app.modules.chat.manager.is_user_connected", return_value=False),
-        patch("app.modules.chat.manager.notify", side_effect=notify_err),
+        patch("app.modules.chat.manager.emit", side_effect=notify_err),
     ):
         # Should NOT raise
         manager.notify_offline_participant(

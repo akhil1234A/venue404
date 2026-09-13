@@ -2,13 +2,13 @@ import logging
 from datetime import UTC, datetime
 
 from app.core.database import with_session
+from app.events import BookingHoldExpiredEvent, emit
 from app.modules.booking.models import (
     Booking,
     BookingStatus,
     BookingStatusHistory,
     PaymentStatus,
 )
-from app.modules.notification import service as notifications
 from app.modules.venue.models import Venue
 
 logger = logging.getLogger(__name__)
@@ -51,12 +51,13 @@ def run() -> int:
             )
             venue = db.get(Venue, b.venue_id)
             venue_name = venue.name if venue else "your venue"
-            notifications.notify(
+            emit(
+                BookingHoldExpiredEvent(
+                    booking_id=b.id,
+                    user_id=b.user_id,
+                    venue_name=venue_name,
+                ),
                 db,
-                b.user_id,
-                "hold_expired",
-                context={"venue_name": venue_name},
-                booking_id=b.id,
             )
         db.commit()
         logger.info("payment_pending_expiry: expired %d booking(s)", len(rows))

@@ -15,6 +15,15 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.core.storage import delete_image_from_cloudinary, upload_image_to_cloudinary
+from app.events import (
+    UserReactivatedEvent,
+    UserSuspendedEvent,
+    VenueApprovedEvent,
+    VenueReactivatedEvent,
+    VenueRejectedEvent,
+    VenueSuspendedEvent,
+    emit,
+)
 from app.modules.admin import settings_store
 from app.modules.admin.models import AdminAction
 from app.modules.admin.schemas import (
@@ -547,14 +556,13 @@ def approve_venue(
 
     sync_reservation_status_for_venue(db, venue_id, VenueStatus.approved)
 
-    from app.modules.notification import service as notifications
-    from app.modules.notification.types import NotificationType
-
-    notifications.notify(
+    emit(
+        VenueApprovedEvent(
+            venue_id=venue_id,
+            owner_id=venue.owner_id,
+            venue_name=venue.name,
+        ),
         db,
-        venue.owner_id,
-        NotificationType.VENUE_APPROVED,
-        context={"venue_name": venue.name},
     )
 
     db.commit()
@@ -586,14 +594,14 @@ def reject_venue(
         )
     )
 
-    from app.modules.notification import service as notifications
-    from app.modules.notification.types import NotificationType
-
-    notifications.notify(
+    emit(
+        VenueRejectedEvent(
+            venue_id=venue_id,
+            owner_id=venue.owner_id,
+            venue_name=venue.name,
+            reason=reason,
+        ),
         db,
-        venue.owner_id,
-        NotificationType.VENUE_REJECTED,
-        context={"venue_name": venue.name, "reason": reason or "No reason provided."},
     )
 
     db.commit()
@@ -626,14 +634,14 @@ def suspend_venue(
         )
     )
 
-    from app.modules.notification import service as notifications
-    from app.modules.notification.types import NotificationType
-
-    notifications.notify(
+    emit(
+        VenueSuspendedEvent(
+            venue_id=venue_id,
+            owner_id=venue.owner_id,
+            venue_name=venue.name,
+            reason=reason,
+        ),
         db,
-        venue.owner_id,
-        NotificationType.VENUE_SUSPENDED,
-        context={"venue_name": venue.name, "reason": reason},
     )
 
     db.commit()
@@ -661,14 +669,13 @@ def reactivate_venue(
         )
     )
 
-    from app.modules.notification import service as notifications
-    from app.modules.notification.types import NotificationType
-
-    notifications.notify(
+    emit(
+        VenueReactivatedEvent(
+            venue_id=venue_id,
+            owner_id=venue.owner_id,
+            venue_name=venue.name,
+        ),
         db,
-        venue.owner_id,
-        NotificationType.VENUE_REACTIVATED,
-        context={"venue_name": venue.name},
     )
 
     db.commit()
@@ -969,14 +976,12 @@ def suspend_user(
         )
     )
 
-    from app.modules.notification import service as notifications
-    from app.modules.notification.types import NotificationType
-
-    notifications.notify(
+    emit(
+        UserSuspendedEvent(
+            user_id=user_id,
+            reason=reason,
+        ),
         db,
-        user_id,
-        NotificationType.USER_SUSPENDED,
-        context={"reason": reason},
     )
 
     db.commit()
@@ -1015,10 +1020,12 @@ def reactivate_user(
         )
     )
 
-    from app.modules.notification import service as notifications
-    from app.modules.notification.types import NotificationType
-
-    notifications.notify(db, user_id, NotificationType.USER_REACTIVATED)
+    emit(
+        UserReactivatedEvent(
+            user_id=user_id,
+        ),
+        db,
+    )
 
     db.commit()
     invalidate_owner_stats_cache()

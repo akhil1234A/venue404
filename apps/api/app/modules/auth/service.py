@@ -126,9 +126,8 @@ def _alert_if_admin_target(db: Session, email: str) -> None:
     (not the target — their inbox is exactly what might be compromised) so a
     targeted attack doesn't go unnoticed.
     """
+    from app.events import AdminPasswordResetRequestedEvent, emit
     from app.modules.admin.models import AdminAction
-    from app.modules.notification import service as notifications
-    from app.modules.notification.types import NotificationType
 
     target = db.query(Profile).filter(Profile.email == email, Profile.deleted_at.is_(None)).first()
     if target is None:
@@ -171,11 +170,12 @@ def _alert_if_admin_target(db: Session, email: str) -> None:
         .all()
     )
     for row in other_admins:
-        notifications.notify(
+        emit(
+            AdminPasswordResetRequestedEvent(
+                target_email=email,
+                admin_user_id=row.user_id,
+            ),
             db,
-            row.user_id,
-            NotificationType.ADMIN_PASSWORD_RESET_REQUESTED,
-            context={"target_email": email},
         )
     db.commit()
 

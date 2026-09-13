@@ -2,9 +2,9 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from app.core.database import with_session
+from app.events import PaymentReminderEvent, emit
 from app.modules.admin import settings_store
 from app.modules.booking.models import Booking, BookingStatus
-from app.modules.notification import service as notifications
 from app.modules.notification.models import InAppNotification
 from app.modules.venue.models import Venue
 
@@ -53,12 +53,14 @@ def run() -> int:
             venue = db.get(Venue, b.venue_id)
             venue_name = venue.name if venue else "your venue"
             hours_left = max(0, int((b.hold_expires_at - now).total_seconds() // 3600))
-            notifications.notify(
+            emit(
+                PaymentReminderEvent(
+                    booking_id=b.id,
+                    user_id=b.user_id,
+                    venue_name=venue_name,
+                    hours_left=hours_left,
+                ),
                 db,
-                b.user_id,
-                "payment_reminder",
-                context={"venue_name": venue_name, "hours_left": hours_left},
-                booking_id=b.id,
             )
             sent += 1
         logger.info("payment_reminders: sent %d reminder(s)", sent)

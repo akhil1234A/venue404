@@ -26,6 +26,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from app.core.stripe_client import get_stripe
+from app.events import (
+    AdvancePaymentConfirmedEvent,
+    BalancePaidEvent,
+    ConflictCancelledEvent,
+    RefundIssuedEvent,
+    emit,
+)
 from app.modules.admin import settings_store
 from app.modules.auth.dependencies import AuthContext
 from app.modules.booking.models import (
@@ -36,7 +43,6 @@ from app.modules.booking.models import (
     PaymentStatus,
 )
 from app.modules.booking.state_machine import can_transition
-from app.modules.notification import service as notifications
 from app.modules.payment.models import (
     LedgerEntry,
     Payment,
@@ -303,22 +309,16 @@ def confirm_payment(db: Session, payment_intent_id: str) -> None:
     # email from app.modules.booking.invoice once the async job generates the
     # PDF, instead of this immediate email plus a second one later. The
     # in-app notification still fires immediately either way.
-    notifications.notify(
-        db,
-        booking.user_id,
-        "payment_confirmed",
-        context={"venue_name": venue_name},
-        booking_id=booking.id,
-        skip_email=True,
-    )
-    if venue:
-        notifications.notify(
-            db,
-            venue.owner_id,
-            "payment_confirmed",
-            context={"venue_name": venue_name},
+    emit(
+        AdvancePaymentConfirmedEvent(
             booking_id=booking.id,
-        )
+            user_id=booking.user_id,
+            venue_id=booking.venue_id,
+            venue_name=venue_name,
+            owner_id=venue.owner_id if venue else None,
+        ),
+        db,
+    )
 
     from app.modules.booking.invoice import enqueue as enqueue_invoice
 
@@ -374,22 +374,16 @@ def confirm_balance_payment(db: Session, payment: Payment, booking: Booking) -> 
     # invoice" email from app.modules.booking.invoice once the async job
     # regenerates the PDF, instead of this immediate email plus a second one
     # later. The in-app notification still fires immediately either way.
-    notifications.notify(
-        db,
-        booking.user_id,
-        "balance_paid",
-        context={"venue_name": venue_name},
-        booking_id=booking.id,
-        skip_email=True,
-    )
-    if venue:
-        notifications.notify(
-            db,
-            venue.owner_id,
-            "balance_paid",
-            context={"venue_name": venue_name},
+    emit(
+        BalancePaidEvent(
             booking_id=booking.id,
-        )
+            user_id=booking.user_id,
+            venue_id=booking.venue_id,
+            venue_name=venue_name,
+            owner_id=venue.owner_id if venue else None,
+        ),
+        db,
+    )
 
     from app.modules.booking.invoice import enqueue as enqueue_invoice
 
@@ -459,12 +453,14 @@ def refund_booking(
             PaymentStatus.refunded if refunded >= total_paid else PaymentStatus.partially_refunded
         )
         venue_name = venue.name if venue else "your venue"
-        notifications.notify(
+        emit(
+            RefundIssuedEvent(
+                booking_id=booking.id,
+                user_id=booking.user_id,
+                venue_name=venue_name,
+                amount_rupees=refunded // 100,
+            ),
             db,
-            booking.user_id,
-            "refund_issued",
-            context={"venue_name": venue_name, "amount_rupees": refunded // 100},
-            booking_id=booking.id,
         )
 
     if booking.status == BookingStatus.confirmed and can_transition(
@@ -938,12 +934,13 @@ def _conflict_cancel(db: Session, competitor: Booking, venue: Venue | None) -> N
     for paid in _succeeded_payments(db, competitor.id):
         _record_refund(db, paid, competitor, paid.amount_paise, "conflict_canceled")
     venue_name = venue.name if venue else "the venue"
-    notifications.notify(
+    emit(
+        ConflictCancelledEvent(
+            booking_id=competitor.id,
+            user_id=competitor.user_id,
+            venue_name=venue_name,
+        ),
         db,
-        competitor.user_id,
-        "conflict_canceled",
-        context={"venue_name": venue_name},
-        booking_id=competitor.id,
     )
 
 
@@ -984,10 +981,11 @@ def _conflict_cancel_self_and_refund(db: Session, payment_intent_id: str) -> Non
     payment.status = PaymentAttemptStatus.succeeded
     _record_refund(db, payment, booking, payment.amount_paise, "lost_slot_race")
     venue_name = venue.name if venue else "the venue"
-    notifications.notify(
+    emit(
+        ConflictCancelledEvent(
+            booking_id=booking.id,
+            user_id=booking.user_id,
+            venue_name=venue_name,
+        ),
         db,
-        booking.user_id,
-        "conflict_canceled",
-        context={"venue_name": venue_name},
-        booking_id=booking.id,
     )
