@@ -150,3 +150,39 @@ class DailySearchStats(Base, TimestampMixin):
             unique=True,
         ),
     )
+
+
+class DailyEngagementStats(Base, TimestampMixin):
+    """Materialized daily engagement rollup table (CQRS Read side).
+
+    Tracks behavioral signals: wishlist saves, reviews, availability checks,
+    pricing previews, and booking detail views.
+    venue_id IS NULL represents platform-wide stats.
+    """
+
+    __tablename__ = "daily_engagement_stats"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    venue_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
+
+    wishlist_adds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    wishlist_removes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reviews_submitted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    avg_review_rating: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    availability_checks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pricing_previews: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    booking_detail_views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unique_engaged_users: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index(
+            "uq_daily_engagement_stats_date_venue",
+            "date",
+            text("COALESCE(venue_id, '00000000-0000-0000-0000-000000000000'::uuid)"),
+            unique=True,
+        ),
+    )
+

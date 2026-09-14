@@ -34,9 +34,11 @@ User / Owner Actions (Search, View Venue, Book, Pay)
          analytics_aggregator.py
                      │
                      ▼ (INSERT ... ON CONFLICT DO UPDATE)
-  ┌───────────────────────┬───────────────────────┬──────────────────────┐
-  │  daily_booking_stats  │  daily_revenue_stats  │  daily_search_stats  │
-  └───────────────────────┴───────────────────────┴──────────────────────┘
+   ┌───────────────────────┬───────────────────────┬──────────────────────┐
+   │  daily_booking_stats  │  daily_revenue_stats  │  daily_search_stats  │
+   ├───────────────────────┴───────────────────────┴──────────────────────┤
+   │               daily_engagement_stats (Behavioral)                    │
+   └──────────────────────────────────────────────────────────────────────┘
 
 ─────────────────────────────────────────────────────────
                      QUERY (READ) PATH
@@ -53,7 +55,7 @@ User / Owner Actions (Search, View Venue, Book, Pay)
 ### Why CQRS for Analytics?
 1. **Zero Transactional Lock Contention**: User search, booking creation, and payment webhooks do not perform expensive aggregations, index scans, or table locks. Events are appended directly to `analytics_events`.
 2. **Immutable Audit Trail**: The `analytics_events` table is append-only (no updates, no deletes).
-3. **Sub-millisecond Dashboard Reads**: Dashboards query pre-aggregated rollups (`daily_booking_stats`, `daily_revenue_stats`, `daily_search_stats`) for historical periods, combined with a fast index scan on `analytics_events` for today's live activity (Lambda architecture).
+3. **Sub-millisecond Dashboard Reads**: Dashboards query pre-aggregated rollups (`daily_booking_stats`, `daily_revenue_stats`, `daily_search_stats`, `daily_engagement_stats`) for historical periods, combined with a fast index scan on `analytics_events` for today's live activity (Lambda architecture).
 
 ---
 
@@ -63,12 +65,13 @@ Defined in [`apps/api/app/modules/analytics/models.py`](file:///c:/Users/Akhil%2
 
 | Table | Nature | Key Columns & Indexes | Purpose |
 |---|---|---|---|
-| `analytics_events` | Append-only write log | `id` (UUID PK), `event_type`, `venue_id` (FK index), `user_id` (FK), `session_id`, `metadata_json`, `created_at` (index) | Captures granular telemetry from user interactions and lifecycle events. |
+| `analytics_events` | Append-only write log | `id` (UUID PK), `event_name`, `venue_id` (FK index), `user_id` (FK), `booking_id` (FK), `payload` (JSONB), `occurred_at` (index) | Captures granular telemetry from user interactions and lifecycle events. |
 | `daily_booking_stats` | Materialized rollup | `date`, `venue_id` (Composite Unique Index: `date, venue_id`), `total_requests`, `total_accepted`, `total_rejected`, `total_cancelled`, `total_completed`, `avg_response_time_seconds` | Precomputed booking funnel & operational speed metrics. |
 | `daily_revenue_stats` | Materialized rollup | `date`, `venue_id` (Composite Unique Index: `date, venue_id`), `gmv_paise`, `platform_fee_paise`, `owner_payout_paise`, `refunds_paise`, `transaction_count` | Precomputed gross merchandise value and revenue splits. |
 | `daily_search_stats` | Materialized rollup | `date`, `city` (Composite Unique Index: `date, city`), `total_searches`, `unique_users`, `avg_results_count` | Precomputed demand and search discovery metrics. |
+| `daily_engagement_stats` | Materialized rollup | `date`, `venue_id` (Composite Unique Index: `date, venue_id`), `wishlist_adds`, `wishlist_removes`, `reviews_submitted`, `avg_review_rating`, `availability_checks`, `pricing_previews`, `booking_detail_views`, `unique_engaged_users` | Precomputed user signals and venue engagement metrics. |
 
-All financial numbers are strictly stored in integer **paise** (`BigInteger`), avoiding floating-point inaccuracies.
+All financial numbers are strictly stored in integer **paise** (`BigInteger`), avoiding floating-point inaccuracies. For detailed telemetry coverage, see the dedicated [Behavioral Tracking & User Signals Documentation](behavioral-tracking.md).
 
 ---
 

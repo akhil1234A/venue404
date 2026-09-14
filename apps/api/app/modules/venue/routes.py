@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.events import VenueViewedEvent, emit
+from app.events import PricingPreviewedEvent, VenueViewedEvent, WishlistToggledEvent, emit
 from app.modules.auth.dependencies import (
     AuthContext,
     get_current_user_optional,
@@ -326,6 +326,14 @@ def toggle_venue_like(
     db: Session = Depends(get_db),
 ):
     is_liked = service.toggle_venue_like(db, venue_id, auth.user_id)
+    emit(
+        WishlistToggledEvent(
+            venue_id=venue_id,
+            user_id=auth.user_id,
+            action="add" if is_liked else "remove",
+        ),
+        db,
+    )
     return {"is_liked": is_liked}
 
 
@@ -375,7 +383,15 @@ def get_pricing_preview(
 ):
     starts_dt = parse_timezone_datetime(starts_at, "starts_at")
     ends_dt = parse_timezone_datetime(ends_at, "ends_at")
-    return service.get_pricing_preview(db, venue_id, starts_dt, ends_dt, booking_type)
+    result = service.get_pricing_preview(db, venue_id, starts_dt, ends_dt, booking_type)
+    emit(
+        PricingPreviewedEvent(
+            venue_id=venue_id,
+            booking_type=booking_type.value,
+        ),
+        db,
+    )
+    return result
 
 
 @router.get("/{venue_id}/availability", response_model=list[VenueAvailabilityResponse])

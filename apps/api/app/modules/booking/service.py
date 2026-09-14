@@ -170,7 +170,8 @@ def create_booking_request(
     if is_instant:
         from app.modules.payment.service import create_payment_intent
 
-        # Emit booking request event so telemetry tracks the funnel stage (search -> view -> request -> confirmed)
+        # Emit booking request event so telemetry tracks the funnel stage
+        # (search -> view -> request -> confirmed)
         emit(
             BookingRequestedEvent(
                 booking_id=booking.id,

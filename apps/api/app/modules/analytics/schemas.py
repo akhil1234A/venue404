@@ -44,11 +44,23 @@ class DailyTrendPoint(BaseModel):
     views_count: int = 0
 
 
+class EngagementKpis(BaseModel):
+    wishlist_adds: int = 0
+    wishlist_removes: int = 0
+    reviews_submitted: int = 0
+    avg_review_rating: float = 0.0
+    availability_checks: int = 0
+    pricing_previews: int = 0
+    booking_detail_views: int = 0
+    unique_engaged_users: int = 0
+
+
 class AdminAnalyticsOverview(BaseModel):
     kpis: AdminKpis
     funnel: list[FunnelStage]
     top_venues: list[TopVenuePerformance]
     trends: list[DailyTrendPoint]
+    engagement: EngagementKpis
     period: str
     start_date: str
     end_date: str
@@ -80,6 +92,7 @@ class OwnerAnalyticsOverview(BaseModel):
     funnel: list[FunnelStage]
     trends: list[DailyTrendPoint]
     benchmarks: OwnerBenchmarks
+    engagement: EngagementKpis
     period: str
     start_date: str
     end_date: str
@@ -91,3 +104,5 @@ class AggregationResult(BaseModel):
     booking_rows_upserted: int
     revenue_rows_upserted: int
     search_rows_upserted: int
+    engagement_rows_upserted: int
+

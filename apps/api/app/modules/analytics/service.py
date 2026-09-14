@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.modules.analytics.models import (
     AnalyticsEvent,
     DailyBookingStats,
+    DailyEngagementStats,
     DailyRevenueStats,
     DailySearchStats,
 )
@@ -18,6 +19,7 @@ from app.modules.analytics.schemas import (
     AdminKpis,
     AggregationResult,
     DailyTrendPoint,
+    EngagementKpis,
     FunnelStage,
     OwnerAnalyticsOverview,
     OwnerBenchmarks,
@@ -124,6 +126,7 @@ def run_aggregation(
     total_booking_rows = 0
     total_revenue_rows = 0
     total_search_rows = 0
+    total_engagement_rows = 0
 
     while curr <= end_date:
         d_start = datetime.combine(curr, time.min, tzinfo=UTC)
@@ -132,11 +135,13 @@ def run_aggregation(
         b_rows = _aggregate_day_bookings(db, curr, d_start, d_end)
         r_rows = _aggregate_day_revenue(db, curr, d_start, d_end)
         s_rows = _aggregate_day_search(db, curr, d_start, d_end)
+        e_rows = _aggregate_day_engagement(db, curr, d_start, d_end)
 
         dates_aggregated.append(curr.isoformat())
         total_booking_rows += b_rows
         total_revenue_rows += r_rows
         total_search_rows += s_rows
+        total_engagement_rows += e_rows
         curr += timedelta(days=1)
 
     db.commit()
@@ -147,6 +152,7 @@ def run_aggregation(
         booking_rows_upserted=total_booking_rows,
         revenue_rows_upserted=total_revenue_rows,
         search_rows_upserted=total_search_rows,
+        engagement_rows_upserted=total_engagement_rows,
     )
 
 
@@ -433,6 +439,128 @@ def _aggregate_day_search(
     return upserted_count
 
 
+def _aggregate_day_engagement(
+    db: Session, target_date: date, d_start: datetime, d_end: datetime
+) -> int:
+    """Aggregate behavioral engagement events for a day by venue and platform-wide."""
+    events = (
+        db.query(AnalyticsEvent)
+        .filter(
+            AnalyticsEvent.occurred_at >= d_start,
+            AnalyticsEvent.occurred_at <= d_end,
+            AnalyticsEvent.event_name.in_(
+                [
+                    "engagement.wishlist_toggled",
+                    "engagement.review_submitted",
+                    "engagement.availability_checked",
+                    "engagement.pricing_previewed",
+                    "engagement.booking_detail_viewed",
+                ]
+            ),
+        )
+        .all()
+    )
+
+    venue_map: dict[UUID | None, dict] = {}
+    users_by_venue: dict[UUID | None, set[UUID]] = {}
+    ratings_by_venue: dict[UUID | None, list[int]] = {}
+
+    def _ensure_entry(v_id: UUID | None):
+        if v_id not in venue_map:
+            venue_map[v_id] = {
+                "wishlist_adds": 0,
+                "wishlist_removes": 0,
+                "reviews_submitted": 0,
+                "avg_review_rating": 0.0,
+                "availability_checks": 0,
+                "pricing_previews": 0,
+                "booking_detail_views": 0,
+                "unique_engaged_users": 0,
+            }
+            users_by_venue[v_id] = set()
+            ratings_by_venue[v_id] = []
+        return venue_map[v_id]
+
+    _ensure_entry(None)
+
+    for ev in events:
+        p_entry = venue_map[None]
+        v_entry = _ensure_entry(ev.venue_id) if ev.venue_id else None
+
+        if ev.user_id:
+            users_by_venue[None].add(ev.user_id)
+            if ev.venue_id:
+                users_by_venue[ev.venue_id].add(ev.user_id)
+
+        if ev.event_name == "engagement.wishlist_toggled":
+            action = ev.payload.get("action", "add")
+            if action == "add":
+                p_entry["wishlist_adds"] += 1
+                if v_entry:
+                    v_entry["wishlist_adds"] += 1
+            else:
+                p_entry["wishlist_removes"] += 1
+                if v_entry:
+                    v_entry["wishlist_removes"] += 1
+        elif ev.event_name == "engagement.review_submitted":
+            p_entry["reviews_submitted"] += 1
+            rating = ev.payload.get("rating")
+            if rating is not None:
+                ratings_by_venue[None].append(int(rating))
+            if v_entry:
+                v_entry["reviews_submitted"] += 1
+                if rating is not None and ev.venue_id:
+                    ratings_by_venue[ev.venue_id].append(int(rating))
+        elif ev.event_name == "engagement.availability_checked":
+            p_entry["availability_checks"] += 1
+            if v_entry:
+                v_entry["availability_checks"] += 1
+        elif ev.event_name == "engagement.pricing_previewed":
+            p_entry["pricing_previews"] += 1
+            if v_entry:
+                v_entry["pricing_previews"] += 1
+        elif ev.event_name == "engagement.booking_detail_viewed":
+            p_entry["booking_detail_views"] += 1
+            if v_entry:
+                v_entry["booking_detail_views"] += 1
+
+    # Compute averages and unique user counts
+    for v_id in venue_map:
+        venue_map[v_id]["unique_engaged_users"] = len(users_by_venue.get(v_id, set()))
+        ratings = ratings_by_venue.get(v_id, [])
+        venue_map[v_id]["avg_review_rating"] = (
+            round(sum(ratings) / len(ratings), 2) if ratings else 0.0
+        )
+
+    upserted_count = 0
+    for v_id, stats in venue_map.items():
+        existing = (
+            db.query(DailyEngagementStats)
+            .filter(
+                DailyEngagementStats.date == target_date,
+                DailyEngagementStats.venue_id == v_id
+                if v_id is not None
+                else DailyEngagementStats.venue_id.is_(None),
+            )
+            .first()
+        )
+        if existing:
+            for k, v in stats.items():
+                setattr(existing, k, v)
+        else:
+            new_row = DailyEngagementStats(
+                id=uuid4(),
+                date=target_date,
+                venue_id=v_id,
+                **stats,
+            )
+            db.add(new_row)
+        upserted_count += 1
+
+    db.flush()
+    return upserted_count
+
+
 # ---------------------------------------------------------------------------
 # Hybrid Read Path (CQRS Dashboards)
 # ---------------------------------------------------------------------------
@@ -670,11 +798,15 @@ def get_admin_overview(
     # Daily Timeseries Trends
     trends = _build_daily_trends(db, c_start, c_end, venue_id=None)
 
+    # Engagement KPIs
+    engagement = _build_engagement_kpis(db, c_start, c_end, venue_ids=None)
+
     return AdminAnalyticsOverview(
         kpis=kpis,
         funnel=funnel,
         top_venues=top_venues,
         trends=trends,
+        engagement=engagement,
         period=period,
         start_date=c_start.isoformat(),
         end_date=c_end.isoformat(),
@@ -727,6 +859,7 @@ def get_owner_overview(
                 conversion_rate_pct=0.0,
                 platform_conversion_rate_pct=0.0,
             ),
+            engagement=EngagementKpis(),
             period=period,
             start_date=c_start.isoformat(),
             end_date=c_end.isoformat(),
@@ -896,11 +1029,15 @@ def get_owner_overview(
     # Trends for owner venues
     trends = _build_daily_trends(db, c_start, c_end, venue_ids=venue_ids)
 
+    # Engagement KPIs
+    engagement = _build_engagement_kpis(db, c_start, c_end, venue_ids=venue_ids)
+
     return OwnerAnalyticsOverview(
         kpis=kpis,
         funnel=funnel,
         trends=trends,
         benchmarks=benchmarks,
+        engagement=engagement,
         period=period,
         start_date=c_start.isoformat(),
         end_date=c_end.isoformat(),
@@ -993,6 +1130,60 @@ def _build_daily_trends(
 
     return [trend_map[k] for k in date_keys]
 
+
+def _build_engagement_kpis(
+    db: Session,
+    start_date: date,
+    end_date: date,
+    venue_ids: list[UUID] | None = None,
+) -> EngagementKpis:
+    """Aggregate engagement stats from materialized rollups for a date range."""
+    q = db.query(
+        func.coalesce(func.sum(DailyEngagementStats.wishlist_adds), 0).label("wl_adds"),
+        func.coalesce(func.sum(DailyEngagementStats.wishlist_removes), 0).label("wl_removes"),
+        func.coalesce(func.sum(DailyEngagementStats.reviews_submitted), 0).label("reviews"),
+        func.coalesce(func.sum(DailyEngagementStats.availability_checks), 0).label("avail"),
+        func.coalesce(func.sum(DailyEngagementStats.pricing_previews), 0).label("pricing"),
+        func.coalesce(func.sum(DailyEngagementStats.booking_detail_views), 0).label("bkgviews"),
+        func.coalesce(func.sum(DailyEngagementStats.unique_engaged_users), 0).label("users"),
+    ).filter(
+        DailyEngagementStats.date >= start_date,
+        DailyEngagementStats.date <= end_date,
+    )
+
+    if venue_ids is not None:
+        q = q.filter(DailyEngagementStats.venue_id.in_(venue_ids))
+    else:
+        q = q.filter(DailyEngagementStats.venue_id.is_(None))
+
+    row = q.first()
+
+    # Weighted average rating across all days
+    avg_q = db.query(
+        func.avg(DailyEngagementStats.avg_review_rating).label("avg_rating"),
+    ).filter(
+        DailyEngagementStats.date >= start_date,
+        DailyEngagementStats.date <= end_date,
+        DailyEngagementStats.reviews_submitted > 0,
+    )
+    if venue_ids is not None:
+        avg_q = avg_q.filter(DailyEngagementStats.venue_id.in_(venue_ids))
+    else:
+        avg_q = avg_q.filter(DailyEngagementStats.venue_id.is_(None))
+
+    avg_row = avg_q.first()
+    avg_rating = round(float(avg_row.avg_rating), 2) if avg_row and avg_row.avg_rating else 0.0
+
+    return EngagementKpis(
+        wishlist_adds=int(row.wl_adds) if row else 0,
+        wishlist_removes=int(row.wl_removes) if row else 0,
+        reviews_submitted=int(row.reviews) if row else 0,
+        avg_review_rating=avg_rating,
+        availability_checks=int(row.avail) if row else 0,
+        pricing_previews=int(row.pricing) if row else 0,
+        booking_detail_views=int(row.bkgviews) if row else 0,
+        unique_engaged_users=int(row.users) if row else 0,
+    )
 
 def export_analytics_csv(
     db: Session,

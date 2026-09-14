@@ -5,6 +5,7 @@ import { MetricCard, StatusBadge, Card, Skeleton, useTheme } from '@venue404/ui'
 import {
   CalendarDays, Clock, FileEdit, Calendar, Wallet, Store,
   CheckCircle2, Gauge, Award, Download,
+  Heart, Calculator, Star,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
@@ -308,6 +309,74 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Customer Interest & Pre-Booking Signals */}
+      {analytics?.engagement && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Card className="p-4 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Wishlist Saves</span>
+              <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 p-2 text-rose-600">
+                <Heart className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+              {analytics.engagement.wishlist_adds.toLocaleString('en-IN')}
+            </div>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              {analytics.engagement.wishlist_removes > 0
+                ? `${analytics.engagement.wishlist_adds - analytics.engagement.wishlist_removes} net saves`
+                : 'Customers saved your venues'}
+            </p>
+          </Card>
+
+          <Card className="p-4 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Calendar Inquiries</span>
+              <div className="rounded-lg bg-sky-50 dark:bg-sky-950/30 p-2 text-sky-600">
+                <CalendarDays className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+              {analytics.engagement.availability_checks.toLocaleString('en-IN')}
+            </div>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Date availability checks
+            </p>
+          </Card>
+
+          <Card className="p-4 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Pricing Quotes</span>
+              <div className="rounded-lg bg-violet-50 dark:bg-violet-950/30 p-2 text-violet-600">
+                <Calculator className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+              {analytics.engagement.pricing_previews.toLocaleString('en-IN')}
+            </div>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Calculated quotes on your venues
+            </p>
+          </Card>
+
+          <Card className="p-4 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Customer Sentiment</span>
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-2 text-amber-600">
+                <Star className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="mt-2 flex items-baseline gap-1 text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+              <span>{analytics.engagement.avg_review_rating > 0 ? analytics.engagement.avg_review_rating.toFixed(1) : '—'}</span>
+              {analytics.engagement.avg_review_rating > 0 && <span className="text-xs font-medium text-amber-500">★</span>}
+            </div>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              {analytics.engagement.reviews_submitted} reviews submitted
+            </p>
           </Card>
         </div>
       )}

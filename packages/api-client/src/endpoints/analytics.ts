@@ -37,11 +37,23 @@ export type DailyTrendPoint = {
   views_count: number
 }
 
+export type EngagementKpis = {
+  wishlist_adds: number
+  wishlist_removes: number
+  reviews_submitted: number
+  avg_review_rating: number
+  availability_checks: number
+  pricing_previews: number
+  booking_detail_views: number
+  unique_engaged_users: number
+}
+
 export type AdminAnalyticsOverview = {
   kpis: AdminKpis
   funnel: FunnelStage[]
   top_venues: TopVenuePerformance[]
   trends: DailyTrendPoint[]
+  engagement: EngagementKpis
   period: string
   start_date: string
   end_date: string
@@ -73,6 +85,7 @@ export type OwnerAnalyticsOverview = {
   funnel: FunnelStage[]
   trends: DailyTrendPoint[]
   benchmarks: OwnerBenchmarks
+  engagement: EngagementKpis
   period: string
   start_date: string
   end_date: string
@@ -98,3 +111,4 @@ export const ownerAnalyticsEndpoints = (client: ReturnType<typeof createClient>)
     return client.get<OwnerAnalyticsOverview>(`/api/owner/analytics/overview${q ? `?${q}` : ''}`)
   },
 })
+

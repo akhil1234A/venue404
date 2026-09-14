@@ -160,6 +160,7 @@ pnpm lint
 | [`reviews.md`](./reviews.md) | Venue review system |
 | [`event-bus.md`](./event-bus.md) | In-process event bus, typed domain events, pub/sub architecture |
 | [`analytics.md`](./analytics.md) | CQRS analytics pipeline: raw event log, aggregation rollups, manual jobs, backfill, and dashboards |
+| [`behavioral-tracking.md`](./behavioral-tracking.md) | User signals & engagement telemetry, event instrumentation, testing procedures |
 | [`DEPLOY.md`](./DEPLOY.md) | Deployment runbook — Render, Vercel, CI gate, background jobs |
 
 ## Environment

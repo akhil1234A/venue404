@@ -13,15 +13,20 @@ from sqlalchemy.orm import Session
 from app.events.dispatcher import subscribe
 from app.events.registry import (
     AdvancePaymentConfirmedEvent,
+    AvailabilityCheckedEvent,
     BalancePaidEvent,
     BookingAcceptedEvent,
     BookingCancelledEvent,
     BookingCompletedEvent,
+    BookingDetailViewedEvent,
     BookingRejectedEvent,
     BookingRequestedEvent,
+    PricingPreviewedEvent,
     RefundIssuedEvent,
+    ReviewSubmittedEvent,
     SearchExecutedEvent,
     VenueViewedEvent,
+    WishlistToggledEvent,
 )
 from app.modules.analytics.models import AnalyticsEvent
 from app.modules.booking.models import Booking
@@ -304,5 +309,98 @@ def on_venue_viewed(event: VenueViewedEvent, db: Session) -> None:
             "venue_name": event.venue_name,
             "owner_id": str(event.owner_id) if event.owner_id else None,
         },
+        occurred_at=event.occurred_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Behavioral & Engagement Event Handlers
+# ---------------------------------------------------------------------------
+
+
+@subscribe(WishlistToggledEvent)
+def on_wishlist_toggled(event: WishlistToggledEvent, db: Session) -> None:
+    _record_event(
+        db,
+        event_name="engagement.wishlist_toggled",
+        event_id=event.event_id,
+        user_id=event.user_id,
+        venue_id=event.venue_id,
+        booking_id=None,
+        payload={
+            "action": event.action,
+            "venue_name": event.venue_name,
+        },
+        occurred_at=event.occurred_at,
+    )
+
+
+@subscribe(ReviewSubmittedEvent)
+def on_review_submitted(event: ReviewSubmittedEvent, db: Session) -> None:
+    _record_event(
+        db,
+        event_name="engagement.review_submitted",
+        event_id=event.event_id,
+        user_id=event.user_id,
+        venue_id=event.venue_id,
+        booking_id=event.booking_id,
+        payload={
+            "rating": event.rating,
+        },
+        occurred_at=event.occurred_at,
+    )
+
+
+@subscribe(AvailabilityCheckedEvent)
+def on_availability_checked(event: AvailabilityCheckedEvent, db: Session) -> None:
+    _record_event(
+        db,
+        event_name="engagement.availability_checked",
+        event_id=event.event_id,
+        user_id=event.user_id,
+        venue_id=event.venue_id,
+        booking_id=None,
+        payload={
+            "booking_date": event.booking_date,
+            "booking_type": event.booking_type,
+        },
+        occurred_at=event.occurred_at,
+    )
+
+
+@subscribe(PricingPreviewedEvent)
+def on_pricing_previewed(event: PricingPreviewedEvent, db: Session) -> None:
+    _record_event(
+        db,
+        event_name="engagement.pricing_previewed",
+        event_id=event.event_id,
+        user_id=event.user_id,
+        venue_id=event.venue_id,
+        booking_id=None,
+        payload={
+            "booking_type": event.booking_type,
+        },
+        occurred_at=event.occurred_at,
+    )
+
+
+@subscribe(BookingDetailViewedEvent)
+def on_booking_detail_viewed(event: BookingDetailViewedEvent, db: Session) -> None:
+    venue_id = None
+    try:
+        booking = db.query(Booking).filter(Booking.id == event.booking_id).first()
+        if booking:
+            venue_id = booking.venue_id
+    except Exception:
+        pass
+
+    _record_event(
+        db,
+        event_name="engagement.booking_detail_viewed",
+        event_id=event.event_id,
+        user_id=event.user_id,
+        venue_id=venue_id,
+        booking_id=event.booking_id,
+        payload={},
         occurred_at=event.occurred_at,
     )

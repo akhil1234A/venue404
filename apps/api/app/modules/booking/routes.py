@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.events import BookingDetailViewedEvent, emit
 from app.modules.auth.dependencies import AuthContext, require_auth, require_owner
 from app.modules.booking import service
 from app.modules.booking.schemas import (
@@ -76,7 +77,15 @@ def get_booking(
     auth: AuthContext = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
-    return service.get_booking(db, booking_id, auth.user_id)
+    result = service.get_booking(db, booking_id, auth.user_id)
+    emit(
+        BookingDetailViewedEvent(
+            booking_id=booking_id,
+            user_id=auth.user_id,
+        ),
+        db,
+    )
+    return result
 
 
 @router.get("/{booking_id}/cancellation-preview", response_model=CancellationPreviewOut)

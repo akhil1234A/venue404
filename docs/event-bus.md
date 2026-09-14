@@ -229,6 +229,11 @@ emit(
 | **Chat** | `ChatMessageOfflineEvent` | `booking_id`, `recipient_id`, `booking_context` | Message sent to offline chat participant |
 | **Behavioral** | `SearchExecutedEvent` | `query`, `city`, `venue_type`, `result_count`, `user_id` | User performs venue search |
 | **Behavioral** | `VenueViewedEvent` | `venue_id`, `user_id`, `owner_id`, `venue_name` | User views venue detail page |
+| **Behavioral** | `WishlistToggledEvent` | `venue_id`, `user_id`, `action`, `venue_name` | User adds or removes venue from saved/wishlist |
+| **Behavioral** | `ReviewSubmittedEvent` | `venue_id`, `user_id`, `booking_id`, `rating` | Customer submits review and star rating for completed booking |
+| **Behavioral** | `AvailabilityCheckedEvent` | `venue_id`, `user_id`, `booking_date`, `booking_type` | User inspects venue calendar availability |
+| **Behavioral** | `PricingPreviewedEvent` | `venue_id`, `user_id`, `booking_type` | User previews dynamic pricing breakdown or quote |
+| **Behavioral** | `BookingDetailViewedEvent` | `booking_id`, `user_id` | User or owner views booking details modal/page |
 
 ---
 

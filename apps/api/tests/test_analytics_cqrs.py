@@ -14,10 +14,15 @@ from uuid import uuid4
 
 from app.events import (
     AdvancePaymentConfirmedEvent,
+    AvailabilityCheckedEvent,
     BookingAcceptedEvent,
+    BookingDetailViewedEvent,
     BookingRequestedEvent,
+    PricingPreviewedEvent,
+    ReviewSubmittedEvent,
     SearchExecutedEvent,
     VenueViewedEvent,
+    WishlistToggledEvent,
 )
 from app.events.handlers import analytics_handler
 from app.modules.analytics import service
@@ -26,6 +31,7 @@ from app.modules.analytics.models import (
 )
 from app.modules.analytics.schemas import (
     DailyTrendPoint,
+    EngagementKpis,
 )
 
 
@@ -194,3 +200,154 @@ def test_export_csv_generation():
     )
     assert "Date,Gross Revenue (INR),Platform Fee (INR),Net Payout (INR)" in owner_csv
     assert "2026-09-01,50000.00,5000.00,45000.00,3,2,25" in owner_csv
+
+
+def test_analytics_handler_wishlist_toggled():
+    """Verify WishlistToggledEvent records a raw engagement event."""
+    mock_db = MagicMock()
+    user_id = uuid4()
+    venue_id = uuid4()
+
+    event = WishlistToggledEvent(
+        user_id=user_id,
+        venue_id=venue_id,
+        action="add",
+    )
+    analytics_handler.on_wishlist_toggled(event, mock_db)
+
+    assert mock_db.add.call_count == 1
+    added_obj = mock_db.add.call_args[0][0]
+    assert isinstance(added_obj, AnalyticsEvent)
+    assert added_obj.event_name == "engagement.wishlist_toggled"
+    assert added_obj.user_id == user_id
+    assert added_obj.venue_id == venue_id
+    assert added_obj.payload["action"] == "add"
+    assert mock_db.flush.called
+
+
+def test_analytics_handler_review_submitted():
+    """Verify ReviewSubmittedEvent records review submission with rating."""
+    mock_db = MagicMock()
+    user_id = uuid4()
+    venue_id = uuid4()
+    booking_id = uuid4()
+    review_id = uuid4()
+
+    event = ReviewSubmittedEvent(
+        review_id=review_id,
+        venue_id=venue_id,
+        booking_id=booking_id,
+        user_id=user_id,
+        rating=5,
+    )
+    analytics_handler.on_review_submitted(event, mock_db)
+
+    added_obj = mock_db.add.call_args[0][0]
+    assert added_obj.event_name == "engagement.review_submitted"
+    assert added_obj.user_id == user_id
+    assert added_obj.venue_id == venue_id
+    assert added_obj.booking_id == booking_id
+    assert added_obj.payload["rating"] == 5
+
+
+def test_analytics_handler_availability_checked():
+    """Verify AvailabilityCheckedEvent records calendar queries."""
+    mock_db = MagicMock()
+    user_id = uuid4()
+    venue_id = uuid4()
+
+    event = AvailabilityCheckedEvent(
+        venue_id=venue_id,
+        user_id=user_id,
+        booking_date="2026-10-01",
+        booking_type="hourly",
+    )
+    analytics_handler.on_availability_checked(event, mock_db)
+
+    added_obj = mock_db.add.call_args[0][0]
+    assert added_obj.event_name == "engagement.availability_checked"
+    assert added_obj.user_id == user_id
+    assert added_obj.venue_id == venue_id
+    assert added_obj.payload["booking_date"] == "2026-10-01"
+    assert added_obj.payload["booking_type"] == "hourly"
+
+
+def test_analytics_handler_pricing_previewed():
+    """Verify PricingPreviewedEvent records pricing queries."""
+    mock_db = MagicMock()
+    user_id = uuid4()
+    venue_id = uuid4()
+
+    event = PricingPreviewedEvent(
+        venue_id=venue_id,
+        user_id=user_id,
+        booking_type="hourly",
+    )
+    analytics_handler.on_pricing_previewed(event, mock_db)
+
+    added_obj = mock_db.add.call_args[0][0]
+    assert added_obj.event_name == "engagement.pricing_previewed"
+    assert added_obj.user_id == user_id
+    assert added_obj.venue_id == venue_id
+    assert added_obj.payload["booking_type"] == "hourly"
+
+
+def test_analytics_handler_booking_detail_viewed():
+    """Verify BookingDetailViewedEvent records booking detail views."""
+    mock_db = MagicMock()
+    user_id = uuid4()
+    booking_id = uuid4()
+    venue_id = uuid4()
+
+    mock_booking = MagicMock()
+    mock_booking.venue_id = venue_id
+    mock_db.query().filter().first.return_value = mock_booking
+
+    event = BookingDetailViewedEvent(
+        booking_id=booking_id,
+        user_id=user_id,
+    )
+    analytics_handler.on_booking_detail_viewed(event, mock_db)
+
+    added_obj = mock_db.add.call_args[0][0]
+    assert added_obj.event_name == "engagement.booking_detail_viewed"
+    assert added_obj.booking_id == booking_id
+    assert added_obj.user_id == user_id
+    assert added_obj.venue_id == venue_id
+
+
+def test_build_engagement_kpis():
+    """Verify _build_engagement_kpis aggregates stats correctly."""
+    mock_db = MagicMock()
+    row = MagicMock()
+    row.wl_adds = 15
+    row.wl_removes = 3
+    row.reviews = 5
+    row.avail = 42
+    row.pricing = 18
+    row.bkgviews = 25
+    row.users = 30
+
+    avg_row = MagicMock()
+    avg_row.avg_rating = 4.5
+
+    query_mock = MagicMock()
+    query_mock.filter.return_value = query_mock
+    query_mock.first.side_effect = [row, avg_row]
+    mock_db.query.return_value = query_mock
+
+    kpis = service._build_engagement_kpis(
+        mock_db, start_date=date(2026, 9, 1), end_date=date(2026, 9, 7)
+    )
+    assert isinstance(kpis, EngagementKpis)
+    assert kpis.wishlist_adds == 15
+    assert kpis.wishlist_removes == 3
+    assert kpis.wishlist_adds - kpis.wishlist_removes == 12
+    assert kpis.reviews_submitted == 5
+    assert kpis.avg_review_rating == 4.5
+    assert kpis.availability_checks == 42
+    assert kpis.pricing_previews == 18
+    assert kpis.booking_detail_views == 25
+    assert kpis.unique_engaged_users == 30
+
+

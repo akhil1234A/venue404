@@ -11,7 +11,7 @@ import {
   CalendarDays, ClipboardList,
   CheckCircle2, XCircle, Clock,
   RefreshCw, TrendingUp, IndianRupee,
-  Filter, Download,
+  Filter, Download, Heart, Calculator, Star,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { AdminLayout } from '../components/AdminLayout'
@@ -310,6 +310,81 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Audience Signals & Pre-Booking Intent */}
+      {analyticsData?.engagement && (
+        <div className="mt-5 rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+          <SectionHeader
+            title="Pre-Booking Signals & User Engagement"
+            description="Active customer intent, search explorations, quotes, and engagement telemetry"
+            className="mb-4"
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50/70 p-4 transition-all hover:bg-zinc-50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">Wishlist Saves</span>
+                <div className="rounded-lg bg-rose-50 p-2 text-rose-600">
+                  <Heart className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-2 text-2xl font-bold text-zinc-900">
+                {analyticsData.engagement.wishlist_adds.toLocaleString('en-IN')}
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                {analyticsData.engagement.wishlist_removes > 0
+                  ? `${analyticsData.engagement.wishlist_adds - analyticsData.engagement.wishlist_removes} net saves (${analyticsData.engagement.wishlist_removes} removed)`
+                  : 'Customer saved venue intent'}
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50/70 p-4 transition-all hover:bg-zinc-50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">Calendar Inquiries</span>
+                <div className="rounded-lg bg-sky-50 p-2 text-sky-600">
+                  <CalendarDays className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-2 text-2xl font-bold text-zinc-900">
+                {analyticsData.engagement.availability_checks.toLocaleString('en-IN')}
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                Active date availability lookups
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50/70 p-4 transition-all hover:bg-zinc-50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">Quotes Generated</span>
+                <div className="rounded-lg bg-violet-50 p-2 text-violet-600">
+                  <Calculator className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-2 text-2xl font-bold text-zinc-900">
+                {analyticsData.engagement.pricing_previews.toLocaleString('en-IN')}
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                Instant pricing previews calculated
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50/70 p-4 transition-all hover:bg-zinc-50">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">Review Health</span>
+                <div className="rounded-lg bg-amber-50 p-2 text-amber-600">
+                  <Star className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-2 flex items-baseline gap-1 text-2xl font-bold text-zinc-900">
+                <span>{analyticsData.engagement.avg_review_rating > 0 ? analyticsData.engagement.avg_review_rating.toFixed(1) : '—'}</span>
+                {analyticsData.engagement.avg_review_rating > 0 && <span className="text-xs font-medium text-amber-500">★</span>}
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                {analyticsData.engagement.reviews_submitted} customer reviews submitted
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content grid: Top Venues, Actions, and Growth Chart */}
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">

@@ -210,3 +210,40 @@ class VenueViewedEvent(DomainEvent):
     user_id: UUID | None = None
     owner_id: UUID | None = None
     venue_name: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Behavioral & Engagement Events
+# ---------------------------------------------------------------------------
+
+
+class WishlistToggledEvent(DomainEvent):
+    venue_id: UUID
+    user_id: UUID
+    action: str  # "add" or "remove"
+    venue_name: str = ""
+
+
+class ReviewSubmittedEvent(DomainEvent):
+    venue_id: UUID
+    user_id: UUID
+    booking_id: UUID
+    rating: int
+
+
+class AvailabilityCheckedEvent(DomainEvent):
+    venue_id: UUID
+    user_id: UUID | None = None
+    booking_date: str = ""
+    booking_type: str = ""
+
+
+class PricingPreviewedEvent(DomainEvent):
+    venue_id: UUID
+    user_id: UUID | None = None
+    booking_type: str = ""
+
+
+class BookingDetailViewedEvent(DomainEvent):
+    booking_id: UUID
+    user_id: UUID

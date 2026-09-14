@@ -5,6 +5,7 @@ from sqlalchemy import case, desc, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.exceptions import APIException
+from app.events import ReviewSubmittedEvent, emit
 from app.modules.admin.models import AdminAction
 from app.modules.booking.models import Booking, BookingStatus
 from app.modules.review.models import VenueReview
@@ -79,6 +80,16 @@ class ReviewService:
 
         db.add(review)
         db.flush()
+
+        emit(
+            ReviewSubmittedEvent(
+                venue_id=venue_id,
+                user_id=user_id,
+                booking_id=booking.id,
+                rating=payload.rating,
+            ),
+            db,
+        )
 
         return ReviewService._to_response(db, review)
 

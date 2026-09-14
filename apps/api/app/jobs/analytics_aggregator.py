@@ -21,15 +21,18 @@ def run() -> int:
         with with_session() as db:
             result = run_aggregation(db, start_date=yesterday, end_date=now)
             logger.info(
-                "Aggregation complete: %d bookings, %d revenue, %d search rows upserted",
+                "Aggregation complete: %d bookings, %d revenue, %d search, %d engagement rows"
+                " upserted",
                 result.booking_rows_upserted,
                 result.revenue_rows_upserted,
                 result.search_rows_upserted,
+                result.engagement_rows_upserted,
             )
             return (
                 result.booking_rows_upserted
                 + result.revenue_rows_upserted
                 + result.search_rows_upserted
+                + result.engagement_rows_upserted
             )
     except Exception:
         logger.exception("Error executing analytics rollup aggregation job")

@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.modules.auth.dependencies import AuthContext, require_owner
+from app.events import AvailabilityCheckedEvent, PricingPreviewedEvent, emit
+from app.modules.auth.dependencies import AuthContext, get_current_user_optional, require_owner
 from app.modules.availability import service
 from app.modules.availability.schemas import (
     AvailabilityResponse,
@@ -25,14 +26,25 @@ def availability_for_date_query(
     venue_id: str,
     availability_date: date = Query(..., alias="date"),
     booking_type: BookingType = Query(...),
+    auth: AuthContext | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    return service.get_availability_for_date(
+    result = service.get_availability_for_date(
         db=db,
         venue_id=venue_id,
         booking_date=availability_date,
         booking_type=booking_type.value,
     )
+    emit(
+        AvailabilityCheckedEvent(
+            venue_id=UUID(venue_id) if isinstance(venue_id, str) else venue_id,
+            user_id=auth.user_id if auth else None,
+            booking_date=availability_date.isoformat(),
+            booking_type=booking_type.value,
+        ),
+        db,
+    )
+    return result
 
 
 @router.get(
@@ -44,15 +56,26 @@ def calendar(
     start_date: date = Query(...),
     end_date: date = Query(...),
     booking_type: BookingType = Query(...),
+    auth: AuthContext | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    return service.get_calendar(
+    result = service.get_calendar(
         db=db,
         venue_id=venue_id,
         start_date=start_date,
         end_date=end_date,
         booking_type=booking_type.value,
     )
+    emit(
+        AvailabilityCheckedEvent(
+            venue_id=venue_id,
+            user_id=auth.user_id if auth else None,
+            booking_date=start_date.isoformat(),
+            booking_type=booking_type.value,
+        ),
+        db,
+    )
+    return result
 
 
 @router.get(
@@ -84,14 +107,25 @@ def availability_for_date(
     venue_id: str,
     booking_date: date,
     booking_type: BookingType = Query(...),
+    auth: AuthContext | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    return service.get_availability_for_date(
+    result = service.get_availability_for_date(
         db=db,
         venue_id=venue_id,
         booking_date=booking_date,
         booking_type=booking_type.value,
     )
+    emit(
+        AvailabilityCheckedEvent(
+            venue_id=UUID(venue_id) if isinstance(venue_id, str) else venue_id,
+            user_id=auth.user_id if auth else None,
+            booking_date=booking_date.isoformat(),
+            booking_type=booking_type.value,
+        ),
+        db,
+    )
+    return result
 
 
 @router.get(
@@ -103,15 +137,25 @@ def pricing_quote(
     starts_at: datetime = Query(...),
     ends_at: datetime = Query(...),
     booking_type: BookingType = Query(...),
+    auth: AuthContext | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    return service.get_pricing_quote(
+    result = service.get_pricing_quote(
         db=db,
         venue_id=venue_id,
         starts_at=starts_at,
         ends_at=ends_at,
         booking_type=booking_type.value,
     )
+    emit(
+        PricingPreviewedEvent(
+            venue_id=UUID(venue_id) if isinstance(venue_id, str) else venue_id,
+            user_id=auth.user_id if auth else None,
+            booking_type=booking_type.value,
+        ),
+        db,
+    )
+    return result
 
 
 @router.post(
