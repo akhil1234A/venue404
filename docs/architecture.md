@@ -19,11 +19,12 @@ The architecture optimizes for two things:
 
 ## Architectural pattern: modular monolith
 
-The backend is a single FastAPI application organized into self-contained modules under `apps/api/app/modules/`. Each module owns its routes, schemas, models, and business logic. Cross-module communication happens through **service functions**, never through direct model or database access.
+The backend is a single FastAPI application organized into self-contained modules under `apps/api/app/modules/`. Each module owns its routes, schemas, models, and business logic. Direct cross-module queries happen through **service functions**, while cross-module side-effects (notifications, analytics, indexing) are decoupled via the **in-process event bus** ([`event-bus.md`](./event-bus.md)).
 
 ```
 apps/api/app/
 ├── core/              ← infrastructure: DB session, JWT verification, config, Redis, Sentry
+├── events/            ← in-process event bus: domain events, dispatcher, subscribers (see event-bus.md)
 ├── infrastructure/    ← external AI providers: Groq (llm/), Jina AI (embeddings/)
 ├── shared/             ← reusable utilities (base models, pagination)
 ├── modules/            ← the 15 business modules (below)
