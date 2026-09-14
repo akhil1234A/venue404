@@ -3,6 +3,6 @@
 Importing this package ensures all event listeners are registered.
 """
 
-from app.events.handlers import notification_handler  # noqa: F401
+from app.events.handlers import analytics_handler, notification_handler  # noqa: F401
 
-__all__ = ["notification_handler"]
+__all__ = ["analytics_handler", "notification_handler"]

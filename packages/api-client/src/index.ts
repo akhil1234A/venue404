@@ -23,3 +23,5 @@ export * from './endpoints/reviews'
 export * from './endpoints/adminSettings'
 export * from './endpoints/chat'
 export * from './endpoints/contact'
+export * from './endpoints/analytics'
+

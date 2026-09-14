@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 import app.events.handlers  # noqa: F401
+import app.models  # noqa: F401
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.logging import setup_logging
@@ -13,6 +14,7 @@ from app.jobs import scheduler as job_scheduler
 from app.modules.admin.routes import router as admin_router
 from app.modules.admin.service import seed_super_admin
 from app.modules.admin.settings_store import seed_platform_settings
+from app.modules.analytics.routes import admin_analytics_router, owner_analytics_router
 from app.modules.auth.routes import router as auth_router
 from app.modules.availability.routes import router as availability_router
 from app.modules.booking.routes import router as booking_router
@@ -88,6 +90,8 @@ app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 app.include_router(payment_router, prefix="/api/payments", tags=["payments"])
 app.include_router(internal_router, prefix="/api/internal", tags=["internal"])
 app.include_router(owner_router, prefix="/api/owner", tags=["owner"])
+app.include_router(admin_analytics_router)
+app.include_router(owner_analytics_router)
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(chat_ws_router, prefix="/api/chat", tags=["chat-ws"])
 app.include_router(deep_research_router, prefix="/api/deep-research", tags=["deep-research"])

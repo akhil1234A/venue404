@@ -2,11 +2,18 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../lib/AuthContext'
 import { MetricCard, StatusBadge, Card, Skeleton, useTheme } from '@venue404/ui'
-import { CalendarDays, Clock, FileEdit, Calendar, Wallet, Store } from 'lucide-react'
+import {
+  CalendarDays, Clock, FileEdit, Calendar, Wallet, Store,
+  CheckCircle2, Gauge, Award, Download,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { createClient, ownerEndpoints } from '@venue404/api-client'
+import { createClient, ownerEndpoints, ownerAnalyticsEndpoints } from '@venue404/api-client'
 import { useQuery } from '@tanstack/react-query'
+
+const client = createClient()
+const ownerApi = ownerEndpoints(client)
+const ownerAnalyticsApi = ownerAnalyticsEndpoints(client)
 
 function formatPaise(paise: number): string {
   const rupees = paise / 100
@@ -51,17 +58,24 @@ export default function Dashboard() {
 
   const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
     queryKey: ['dashboard-stats'],
-    queryFn: () => ownerEndpoints(createClient()).getDashboardStats()
+    queryFn: () => ownerApi.getDashboardStats()
   })
 
   const { data: upcomingEvents = [], isLoading: eventsLoading } = useQuery({
     queryKey: ['upcoming-events'],
-    queryFn: () => ownerEndpoints(createClient()).getUpcomingEvents()
+    queryFn: () => ownerApi.getUpcomingEvents()
   })
 
   const { data: chartData = [], isLoading: chartLoading } = useQuery({
     queryKey: ['dashboard-chart', timeRange],
-    queryFn: () => ownerEndpoints(createClient()).getDashboardChart(timeRange)
+    queryFn: () => ownerApi.getDashboardChart(timeRange)
+  })
+
+  // CQRS Owner Analytics Query
+  const analyticsPeriod = timeRange === '7D' ? '7d' : timeRange === '12M' ? '12m' : '30d'
+  const { data: analytics } = useQuery({
+    queryKey: ['owner-analytics', analyticsPeriod],
+    queryFn: () => ownerAnalyticsApi.getOverview({ period: analyticsPeriod })
   })
 
   const initialLoad = statsLoading || eventsLoading
@@ -71,6 +85,10 @@ export default function Dashboard() {
     { label: 'Create new venue', icon: FileEdit, link: '/venues/new' },
     { label: 'Pending bookings', icon: Clock, link: '/bookings?tab=requested' },
   ]
+
+  const handleExportCsv = () => {
+    window.open(`/api/owner/analytics/export?period=${analyticsPeriod}`, '_blank')
+  }
 
   if (initialLoad) {
     return (
@@ -89,8 +107,6 @@ export default function Dashboard() {
       </div>
     )
   }
-
-
 
   // Summary numbers shown in chart header
   const chartTotals = chartData.reduce(
@@ -117,21 +133,31 @@ export default function Dashboard() {
               {action.label}
             </Link>
           ))}
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-white dark:bg-ink-900 border border-zinc-200 dark:border-ink-700 rounded-lg hover:bg-zinc-50 dark:hover:bg-ink-800 transition-colors shadow-sm"
+          >
+            <Download className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+            Export CSV
+          </button>
         </div>,
         portalTarget
       )}
 
       {/* Header Strip */}
-      <section>
-        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">Hello, {userName}!</h1>
-        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Track your venue performance and upcoming bookings.</p>
+      <section className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">Hello, {userName}!</h1>
+          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Track your venue performance, response times, and upcoming bookings.</p>
+        </div>
       </section>
 
       {error && (
         <div className="rounded-lg border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-700 dark:text-red-400">{error}</div>
       )}
 
-      {/* KPI Stats */}
+      {/* Primary KPI Stats */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           label="Pending Approvals"
@@ -163,7 +189,130 @@ export default function Dashboard() {
         />
       </section>
 
-      {/* Main Content Area */}
+      {/* CQRS Operational Intelligence Cards: Occupancy, Acceptance, Response Time */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="p-4 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Occupancy Rate</span>
+            <div className="rounded-lg bg-teal-50 dark:bg-teal-950/30 p-2 text-teal-600">
+              <Gauge className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+            {analytics ? `${analytics.kpis.occupancy_rate_pct}%` : '—'}
+          </div>
+          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Confirmed booking slots / total venue capacity
+          </p>
+        </Card>
+
+        <Card className="p-4 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Booking Acceptance Rate</span>
+            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 p-2 text-emerald-600">
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+            {analytics ? `${analytics.kpis.acceptance_rate_pct}%` : '—'}
+          </div>
+          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Accepted vs rejected booking requests
+          </p>
+        </Card>
+
+        <Card className="p-4 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Avg Response Time</span>
+            <div className="rounded-lg bg-indigo-50 dark:bg-indigo-950/30 p-2 text-indigo-600">
+              <Clock className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+            {analytics ? analytics.kpis.avg_response_time_human : '—'}
+          </div>
+          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            Average time to accept or reject customer inquiries
+          </p>
+        </Card>
+      </section>
+
+      {/* Benchmarks & Conversion Funnel */}
+      {analytics && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Benchmarks Card */}
+          <Card className="p-5 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+            <div className="flex items-center gap-2 mb-4">
+              <Award className="h-4 w-4 text-brand-600" />
+              <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm">Platform Benchmarks</h3>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+              How your venues compare to platform-wide averages
+            </p>
+            <div className="space-y-4 text-xs">
+              <div>
+                <div className="flex justify-between text-zinc-600 dark:text-zinc-300 font-medium mb-1">
+                  <span>Acceptance Rate</span>
+                  <span>{analytics.benchmarks.acceptance_rate_pct}% vs {analytics.benchmarks.platform_acceptance_rate_pct}% avg</span>
+                </div>
+                <div className="h-2 w-full bg-zinc-100 dark:bg-ink-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full"
+                    style={{ width: `${Math.min(100, analytics.benchmarks.acceptance_rate_pct)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-zinc-600 dark:text-zinc-300 font-medium mb-1">
+                  <span>Avg Response Speed</span>
+                  <span>{analytics.kpis.avg_response_time_human}</span>
+                </div>
+                <div className="h-2 w-full bg-zinc-100 dark:bg-ink-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full"
+                    style={{ width: `${Math.min(100, (analytics.benchmarks.avg_response_time_seconds / 7200) * 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex justify-between text-zinc-600 dark:text-zinc-300 font-medium mb-1">
+                  <span>View-to-Book Conversion</span>
+                  <span>{analytics.benchmarks.conversion_rate_pct}%</span>
+                </div>
+                <div className="h-2 w-full bg-zinc-100 dark:bg-ink-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-500 rounded-full"
+                    style={{ width: `${Math.min(100, analytics.benchmarks.conversion_rate_pct * 10)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Owner Venue Funnel */}
+          <Card className="lg:col-span-2 p-5 border-zinc-200 dark:border-ink-700 shadow-sm rounded-xl">
+            <h3 className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm mb-1">Venue Booking Journey</h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
+              Funnel progression from page views to confirmed bookings
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {analytics.funnel.map((f, i) => (
+                <div key={f.stage} className="rounded-lg border border-zinc-100 dark:border-ink-800 bg-zinc-50/50 dark:bg-ink-900/50 p-3">
+                  <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">{f.label}</div>
+                  <div className="text-lg font-bold text-zinc-900 dark:text-zinc-100 mt-1">{f.count}</div>
+                  <div className="text-[10px] text-zinc-400 mt-2">
+                    {i > 0 ? `Drop: ${f.dropoff_rate}%` : '100% initial'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Main Content Area: Chart & Upcoming */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Performance Chart */}

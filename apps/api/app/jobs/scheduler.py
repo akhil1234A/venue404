@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.jobs import (
+    analytics_aggregator,
     balance_overdue,
     booking_completion,
     hold_expiry,
@@ -29,6 +30,7 @@ def start():
         balance_overdue.run_autocancel, "interval", hours=6, id="balance_overdue_autocancel"
     )
     scheduler.add_job(search_indexer.run, "interval", hours=1, id="search_indexer")
+    scheduler.add_job(analytics_aggregator.run, "interval", hours=1, id="analytics_aggregator")
     scheduler.start()
 
 

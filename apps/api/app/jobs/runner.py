@@ -13,6 +13,7 @@ import logging
 
 import app.models  # noqa: F401 — register every ORM model before any job queries run
 from app.jobs import (
+    analytics_aggregator,
     balance_overdue,
     booking_completion,
     hold_expiry,
@@ -36,6 +37,7 @@ JOBS = {
     "search_indexer": search_indexer.run,
     "payment_pending_expiry": payment_pending_expiry.run,
     "invoice_generator": invoice_generator.run,
+    "analytics_aggregator": analytics_aggregator.run,
 }
 
 

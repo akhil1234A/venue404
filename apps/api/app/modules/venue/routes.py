@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.events import VenueViewedEvent, emit
 from app.modules.auth.dependencies import (
     AuthContext,
     get_current_user_optional,
@@ -347,7 +348,21 @@ def get_venue(
     auth: AuthContext | None = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
-    return service.get_venue_detail_cached(db, identifier, user_id=auth.user_id if auth else None)
+    venue = service.get_venue_detail_cached(db, identifier, user_id=auth.user_id if auth else None)
+    is_dict = isinstance(venue, dict)
+    venue_id = venue["id"] if is_dict else venue.id
+    owner_id = venue.get("owner_id") if is_dict else getattr(venue, "owner_id", None)
+    venue_name = venue.get("name", "") if is_dict else getattr(venue, "name", "")
+    emit(
+        VenueViewedEvent(
+            venue_id=venue_id,
+            user_id=auth.user_id if auth else None,
+            owner_id=owner_id,
+            venue_name=venue_name,
+        ),
+        db,
+    )
+    return venue
 
 
 @router.get("/{venue_id}/pricing", response_model=PricingPreviewResponse)

@@ -170,6 +170,18 @@ def create_booking_request(
     if is_instant:
         from app.modules.payment.service import create_payment_intent
 
+        # Emit booking request event so telemetry tracks the funnel stage (search -> view -> request -> confirmed)
+        emit(
+            BookingRequestedEvent(
+                booking_id=booking.id,
+                user_id=user_id,
+                owner_id=venue.owner_id,
+                venue_id=venue.id,
+                venue_name=venue.name,
+            ),
+            db,
+        )
+
         try:
             create_payment_intent(db, user_id, booking.id, payment_type="advance")
         except Exception as e:

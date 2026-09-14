@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.rate_limit import enforce_ip_hourly_limit
+from app.events import SearchExecutedEvent, emit
 from app.modules.admin import settings_store
 from app.modules.search import service
 from app.modules.search.schemas import SearchParams, SearchResult, SearchResultPage
@@ -44,7 +45,17 @@ def search_venues(
     params: SearchParams = Depends(_params),
     db: Session = Depends(get_db),
 ):
-    return service.search(db, params)
+    results = service.search(db, params)
+    emit(
+        SearchExecutedEvent(
+            query=params.q,
+            city=params.city,
+            venue_type=params.venue_type,
+            result_count=len(results.items) if hasattr(results, "items") else 0,
+        ),
+        db,
+    )
+    return results
 
 
 @router.get("/fts", response_model=SearchResultPage)
@@ -53,7 +64,17 @@ def search_fts(
     db: Session = Depends(get_db),
 ):
     try:
-        return service.search_fts(db, params)
+        results = service.search_fts(db, params)
+        emit(
+            SearchExecutedEvent(
+                query=params.q,
+                city=params.city,
+                venue_type=params.venue_type,
+                result_count=len(results.items) if hasattr(results, "items") else 0,
+            ),
+            db,
+        )
+        return results
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -74,7 +95,17 @@ def search_semantic(
     db: Session = Depends(get_db),
 ):
     _enforce_embedding_rate_limit(request, db)
-    return service.search_semantic(db, params)
+    results = service.search_semantic(db, params)
+    emit(
+        SearchExecutedEvent(
+            query=params.q,
+            city=params.city,
+            venue_type=params.venue_type,
+            result_count=len(results.items) if hasattr(results, "items") else 0,
+        ),
+        db,
+    )
+    return results
 
 
 @router.get("/hybrid", response_model=SearchResultPage)
@@ -87,6 +118,16 @@ def search_hybrid(
     _enforce_embedding_rate_limit(request, db)
     response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        return service.search_hybrid(db, params)
+        results = service.search_hybrid(db, params)
+        emit(
+            SearchExecutedEvent(
+                query=params.q,
+                city=params.city,
+                venue_type=params.venue_type,
+                result_count=len(results.items) if hasattr(results, "items") else 0,
+            ),
+            db,
+        )
+        return results
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

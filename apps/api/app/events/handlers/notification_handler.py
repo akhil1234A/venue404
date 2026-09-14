@@ -297,9 +297,7 @@ def on_user_reactivated(event: UserReactivatedEvent, db: Session) -> None:
 
 
 @subscribe(AdminPasswordResetRequestedEvent)
-def on_admin_password_reset_requested(
-    event: AdminPasswordResetRequestedEvent, db: Session
-) -> None:
+def on_admin_password_reset_requested(event: AdminPasswordResetRequestedEvent, db: Session) -> None:
     notifications.notify(
         db,
         event.admin_user_id,

@@ -190,3 +190,23 @@ class ChatMessageOfflineEvent(DomainEvent):
     booking_id: UUID
     recipient_id: UUID
     booking_context: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Search and Behavioral Events
+# ---------------------------------------------------------------------------
+
+
+class SearchExecutedEvent(DomainEvent):
+    query: str = ""
+    city: str = ""
+    venue_type: str | None = None
+    result_count: int = 0
+    user_id: UUID | None = None
+
+
+class VenueViewedEvent(DomainEvent):
+    venue_id: UUID
+    user_id: UUID | None = None
+    owner_id: UUID | None = None
+    venue_name: str = ""
