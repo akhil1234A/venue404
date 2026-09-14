@@ -158,6 +158,7 @@ pnpm lint
 | [`instant-booking.md`](./instant-booking.md) | Pay-and-confirm booking mode |
 | [`chat.md`](./chat.md) | Booking-scoped messaging |
 | [`reviews.md`](./reviews.md) | Venue review system |
+| [`event-bus.md`](./event-bus.md) | In-process event bus, typed domain events, pub/sub architecture |
 | [`analytics.md`](./analytics.md) | CQRS analytics pipeline: raw event log, aggregation rollups, manual jobs, backfill, and dashboards |
 | [`DEPLOY.md`](./DEPLOY.md) | Deployment runbook — Render, Vercel, CI gate, background jobs |
 
